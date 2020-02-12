@@ -91,9 +91,10 @@ func (d *Dataframe) append(Ind int, Layer string, Key string,
 	return 0
 }
 
+//even make csv columns even in length
 func (d *Dataframe) even(Ind int) {
 	Ind++
-	for key, _ := range d.smap { //make csv even
+	for key, _ := range d.smap {
 		if (d.smap[key].Length) < Ind {
 			for i := 0; i < Ind-d.smap[key].Length; i++ {
 				d.smap[key].Data = append(d.smap[key].Data, nil)
@@ -144,6 +145,9 @@ type ConfigYAML struct {
 }
 
 func main() {
+	var captureKeys []string
+	captureFields := make(map[string]int) //TODO: flag mapping
+	var pluginKeys []string
 	var out Dataframe
 	flag.Parse()
 	c := ConfigYAML{}
@@ -163,7 +167,7 @@ func main() {
 	log.Printf("INFO Using configuration: %s\n", *config)
 
 	if len(flag.Args()) == 0 {
-		log.Println("ERROR Please, provide filenames or network interfaces: \"capana default.pcap\" or \"capana en0\"")
+		log.Println("ERROR Please, provide filenames or network interfaces: \"./capana <example.pcap|en0>\"")
 		os.Exit(1)
 	}
 	for i, fd := range flag.Args() {
@@ -173,7 +177,26 @@ func main() {
 			break
 		}
 	}
-
+	for _, key := range c.Plugins {
+		pluginKeys = append(pluginKeys, fmt.Sprintf("%s", reflect.ValueOf(key).MapKeys()[0]))
+	}
+	for _, key := range c.Capture {
+		captureKeys = append(captureKeys, fmt.Sprintf("%s", reflect.ValueOf(key).MapKeys()[0]))
+	}
+	fmt.Printf("Capture Structure:\n")
+	for _, key := range c.Capture {
+		keyName := fmt.Sprintf("%s", reflect.ValueOf(key).MapKeys()[0])
+		//fmt.Printf("\t%s\n", keyName)
+		m := reflect.ValueOf(key[keyName]) //get map
+		for i := 0; i < m.Len(); i++ {
+			field := reflect.ValueOf(m.Index(i).Interface()).MapKeys()[0]
+			kf := fmt.Sprintf("%s.%s", keyName, field)
+			fmt.Printf("\t- %s\n", kf)
+			//captureFields = append(captureFields, fmt.Sprintf("%s.%s", key, field))
+			captureFields[kf] = 1
+		}
+	}
+	fmt.Printf("CaptureFields:\n%v\n", captureFields)
 	if *dryrun {
 		log.Println("INFO Dry run information:")
 		fmt.Printf("config: snaplen: %d\n", c.Config.Snaplen)
@@ -186,8 +209,8 @@ func main() {
 		fmt.Printf("policy: filter: %v\n", c.Policy.Filter)
 		fmt.Printf("policy: unmatched: %v\n", c.Policy.Unmatched)
 		fmt.Printf("policy: output: %v\n", c.Policy.Output)
-		fmt.Printf("plugins: %v\n", c.Plugins)
-		fmt.Printf("capture: Ethernet %v\n", c.Capture)
+		fmt.Printf("plugins: %v\n", pluginKeys)
+		fmt.Printf("capture: %v\n", captureKeys)
 		os.Exit(0)
 	}
 
@@ -201,9 +224,6 @@ func main() {
 	}
 	defer handle.Close()
 
-	for _, key := range c.Capture {
-		fmt.Printf("%s\n", key)
-	}
 	//os.Exit(0)
 	var source = gopacket.NewPacketSource(handle, handle.LinkType())
 	var pktIndex = 0
@@ -212,25 +232,28 @@ func main() {
 		//fmt.Printf("Packet: %s\n", packet.String()) // packet.Layers())
 		pktlayers := packet.Layers()
 		for _, pktlayer := range pktlayers { //ind
-			s := reflect.ValueOf(pktlayer).Elem()
-			typeOfT := s.Type()
+			elem := reflect.ValueOf(pktlayer).Elem()
+			typeOfT := elem.Type()
 			typeName := fmt.Sprintf("%s", typeOfT)
 			layerName := fmt.Sprintf("%s", pktlayer.LayerType())
 			//fmt.Printf("%d> %s, %s\n", ind, pktlayer.LayerType(), typeOfT)
 			if typeName != "gopacket.Payload" {
-				for i := 0; i < s.NumField(); i++ {
+				for i := 0; i < elem.NumField(); i++ {
 					if layerName == "DecodeFailure" {
 						out.append(pktIndex, "gopacket",
 							"DecodeFailure",
 							"bool", "true")
 						break
 					}
-					f := s.Field(i)
+					f := elem.Field(i)
 					fieldName := fmt.Sprintf("%s", typeOfT.Field(i).Name)
 					if fieldName == "BaseLayer" {
 						continue
 					}
 					//non-private field
+					if _, ok := captureFields[fmt.Sprintf("%s.%s", layerName, typeOfT.Field(i).Name)]; !ok {
+						continue
+					}
 					if (fieldName[0] > 64) && (fieldName[0] < 91) {
 						out.append(pktIndex, layerName,
 							typeOfT.Field(i).Name,

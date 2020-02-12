@@ -16,14 +16,12 @@ plugins:
 
 policy:
   filter:
-    - file: main.csv
-      include: [TCP, UDP, ICMP, ICMPv6]
-    - file: everythingelse.csv
-      exclude: [TCP, UDP, ICMP, ICMPv6]
+    - redirect: others.csv
+      include: [UNMATCHED, NTP, STUN]
     - plugin: geoip
       include: [TCP, UDP]
     - plugin: dnsmap
-      include: [TCP, UDP]    
+      include: [DNS]
     - plugin: ouimap
       include: [Ethernet]   
 
@@ -74,17 +72,17 @@ capture:
     - DstPort:
     - Seq:
     - Ack:
-   #- DataOffset:
+    #- DataOffset:
     - FIN:
     - SYN:
     - RST:
     - PSH:
     - ACK:
     - URG:
-    - ECE:
-    - CWR:
-   #- NS:
-    - Window:
+    #- ECE:
+    #- CWR:
+    #- NS:
+    #- Window:
    #- Checksum:
    #- Urgent:
    #- Options: #[[]layers.TCPOption] = [TCPOption(NOP:) TCPOption(NOP:) TCPOption(Timestamps:4956/1150338284 0x0000135c4490c4ec)]
