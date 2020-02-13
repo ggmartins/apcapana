@@ -25,6 +25,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -64,6 +65,8 @@ type SeriesMap map[string]*Series
 
 type Dataframe struct {
 	smap SeriesMap //Series
+	keys []string
+	ind  int
 }
 
 func (d *Dataframe) append(Ind int, Layer string, Key string,
@@ -102,6 +105,7 @@ func (d *Dataframe) even(Ind int) {
 			d.smap[key].Length += (Ind - d.smap[key].Length)
 		}
 	}
+	d.ind = Ind
 }
 
 func (d *Dataframe) dumpLine(Ind int, format string) {
@@ -116,9 +120,38 @@ func (d *Dataframe) dumpLine(Ind int, format string) {
 	}
 }
 
-func (d *Dataframe) dumpKey(key string) {
-	for i := 0; i < d.smap[key].Length; i++ {
-		fmt.Printf("*%d>%s\n", i, d.smap[key].Data[i])
+func (d *Dataframe) addKey(key string) {
+	d.keys = append(d.keys, key)
+}
+
+func (d *Dataframe) dumpCSV() {
+	var line []string
+	var val string
+	file, err := os.Create("result.csv")
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	writer.Write(d.keys) // header
+	writer.Flush()
+
+	for i := 0; i < d.ind; i++ {
+		for _, key := range d.keys {
+			val = ""
+			if d.smap[key] != nil {
+				if d.smap[key].Data[i] != nil {
+					val = strings.Trim(fmt.Sprintf("%v", d.smap[key].Data[i]), "[] ") // strings.Trim(,  "[] ")
+				}
+			}
+			line = append(line, val)
+		}
+		writer.Write(line)
+		writer.Flush()
+		line = nil
+		//os.Exit(0)
 	}
 }
 
@@ -144,13 +177,20 @@ type ConfigYAML struct {
 	Capture []map[string]interface{}
 }
 
+var captureKeys []string //TODO: move to struct
+var captureFields map[string]int
+
+//TODO: tuple instead?
+var pldLo int //Payload - filter: [0, 10]
+var pldHi int //Payload - filter: [0, 10]
+
 func main() {
-	var captureKeys []string
-	captureFields := make(map[string]int) //TODO: flag mapping
+
 	var pluginKeys []string
 	var out Dataframe
 	flag.Parse()
 	c := ConfigYAML{}
+	captureFields := make(map[string]int) //TODO: flag mapping
 
 	yamlFile, err := ioutil.ReadFile(*config)
 	if err != nil {
@@ -192,8 +232,21 @@ func main() {
 			field := reflect.ValueOf(m.Index(i).Interface()).MapKeys()[0]
 			kf := fmt.Sprintf("%s.%s", keyName, field)
 			fmt.Printf("\t- %s\n", kf)
-			//captureFields = append(captureFields, fmt.Sprintf("%s.%s", key, field))
 			captureFields[kf] = 1
+			if kf == "Payload.filter" {
+				pldFilterLen := len(m.Index(i).Interface().(map[string]interface{})["filter"].([]interface{}))
+				if pldFilterLen != 2 {
+					panic("ERROR Payload filter must contain 2 values (lower and upper), eg. \"- filter [0,10]\".\n")
+				} else {
+					pldLo = m.Index(i).Interface().(map[string]interface{})["filter"].([]interface{})[0].(int)
+					pldHi = m.Index(i).Interface().(map[string]interface{})["filter"].([]interface{})[1].(int)
+					if pldLo >= pldHi {
+						panic("ERROR Payload filter must contain 2 values (lower and upper), eg. \"- filter [0,10]\".\n")
+					}
+				}
+				//os.Exit(0)
+			}
+			out.addKey(kf)
 		}
 	}
 	fmt.Printf("CaptureFields:\n%v\n", captureFields)
@@ -211,6 +264,7 @@ func main() {
 		fmt.Printf("policy: output: %v\n", c.Policy.Output)
 		fmt.Printf("plugins: %v\n", pluginKeys)
 		fmt.Printf("capture: %v\n", captureKeys)
+		fmt.Printf("Payload Lower and Higher bounds: [%d, %d]\n", pldLo, pldHi)
 		os.Exit(0)
 	}
 
@@ -228,8 +282,11 @@ func main() {
 	var source = gopacket.NewPacketSource(handle, handle.LinkType())
 	var pktIndex = 0
 	for packet := range source.Packets() {
-
+		pktTS := packet.Metadata().Timestamp.UnixNano()
+		pktLen := packet.Metadata().Length
+		pktCapLen := packet.Metadata().CaptureLength
 		//fmt.Printf("Packet: %s\n", packet.String()) // packet.Layers())
+
 		pktlayers := packet.Layers()
 		for _, pktlayer := range pktlayers { //ind
 			elem := reflect.ValueOf(pktlayer).Elem()
@@ -250,46 +307,61 @@ func main() {
 					if fieldName == "BaseLayer" {
 						continue
 					}
-					//non-private field
 					if _, ok := captureFields[fmt.Sprintf("%s.%s", layerName, typeOfT.Field(i).Name)]; !ok {
 						continue
 					}
+					//non-private field
 					if (fieldName[0] > 64) && (fieldName[0] < 91) {
 						out.append(pktIndex, layerName,
 							typeOfT.Field(i).Name,
 							fmt.Sprintf("%s", f.Type()), f.Interface())
-						/*if layerName == "IPv4" && typeOfT.Field(i).Name == "SrcIP" {
+						/*
 							fmt.Printf("%s", typeOfT.Field(i).Name)
 							fmt.Printf(" [%s]", f.Type())
 							fmt.Printf(" = %v\n", f.Interface())
 							found = true
-						}*/
+						*/
 					}
 				}
 			} else {
-				/*if app := packet.ApplicationLayer(); app != nil {
-					for _, b := range app.Payload() {
-						fmt.Printf("%02x:", b)
+				fmt.Printf("HERE1 \n")
+				if app := packet.ApplicationLayer(); app != nil {
+					payload := app.Payload()
+					pldStr := ""
+					for i, b := range payload {
+						if i >= pldLo && i <= pldHi {
+							pldStr += fmt.Sprintf("%02x:", b)
+						}
 					}
+					fmt.Printf("HERE %s\n", pldStr)
+					out.append(pktIndex, "Payload",
+						"Length",
+						"int", len(payload))
+					out.append(pktIndex, "Payload",
+						"filter",
+						"string", pldStr)
 				}
-				fmt.Printf("\n")*/
+				fmt.Printf("\n")
 			}
 		}
 		out.append(pktIndex, "gopacket",
 			"layers",
 			"[]string", pktlayers)
-		out.even(pktIndex)
-		//out.dumpLine(pktIndex, "csv")
+		out.append(pktIndex, "Metadata",
+			"Timestamp",
+			"int", pktTS/1000)
+		out.append(pktIndex, "Metadata",
+			"Length",
+			"int", pktLen)
+		out.append(pktIndex, "Metadata",
+			"CapLen",
+			"int", pktCapLen)
+		out.even(pktIndex) //important
 
 		pktIndex++
-		//if pktIndex ==  {
-		//os.Exit(0)
-		//	break
-		//}
 	}
-	//out.even(pktIndex-1)
-	//out.dumpKey("IPv4.SrcIP")
 
-	out.dumpLine(pktIndex-1, "csv")
-	fmt.Printf("%d\n", pktIndex)
+	//out.dumpLine(pktIndex-1, "csv")
+	fmt.Printf("Total Packets: %d\n", pktIndex-1)
+	out.dumpCSV()
 }

@@ -17,7 +17,7 @@ plugins:
 policy:
   filter:
     - redirect: others.csv
-      include: [UNMATCHED, NTP, STUN]
+      include: [ALLUNMATCHED] #[NTP, IGMPv4]
     - plugin: geoip
       include: [TCP, UDP]
     - plugin: dnsmap
@@ -34,6 +34,10 @@ policy:
 
 
 capture:
+  - Metadata:
+    - Timestamp:
+    - Length:
+    - CapLen:
   - Ethernet:
     - SrcMAC:
         #- filter: host 00:16:6c:*:*:* #host = SrcMAC OR DstMAC
@@ -46,7 +50,7 @@ capture:
       - filter: < 1500  #not required
   - IPv4:
     #- Version:
-    #- IHL:
+    - IHL:
     #- TOS:
     #- Length:
     #- Id:
@@ -72,7 +76,7 @@ capture:
     - DstPort:
     - Seq:
     - Ack:
-    #- DataOffset:
+    - DataOffset:
     - FIN:
     - SYN:
     - RST:
@@ -88,5 +92,7 @@ capture:
    #- Options: #[[]layers.TCPOption] = [TCPOption(NOP:) TCPOption(NOP:) TCPOption(Timestamps:4956/1150338284 0x0000135c4490c4ec)]
    #- Padding:
   - Payload:
+    - Length:
     - filter: [0,8] # print first 8 bytes max the app payload
+    - tbd: test
   
