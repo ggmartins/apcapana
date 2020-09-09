@@ -1,9 +1,9 @@
 ///////////////////////////////////////////////////////////////////////
 // (ap)capana - Advanced Packet Capture Analysis
-// Description: A Go Lang tool designed to aid network traffic analysis
-// using standard packet capture .pcap file format as input. It provides
-// building block plugin modules to facilitate various data wrangling
-// operations with tcp/udp/ip networking data.
+// Description: This is Go Lang tool designed to aid network traffic
+// analysis using standard packet capture .pcap file format as input.
+// It provides building block plugin modules to facilitate various data
+// wrangling operations with tcp/udp/ip networking data.
 // The output of offline processing is a csv file.
 // Online processing output TBD
 //
@@ -11,15 +11,16 @@
 //
 // input - one or multiple pcap file (offline) or interfaces (online)
 //
-// output - directory ./output/*.csv files
+// output - directory ./output/*.csv files (configurable via )
 //
+// config - config dir repository
 // capana.conf.yml - yaml with all the configuration required for execution
-// capana.default.conf.yml - default lightweight configuration
-// capana.alldata.conf.yml - simplified configuration to export all the data
+// config examples:
+//   capana.default.conf.yml - default lightweight configuration
+//   capana.alldata.conf.yml - simplified configuration to export all the data
 //
 // Authors:
 //   Guilherme G. Martins - gmartins uchicago @ edu
-//
 //
 
 package main
@@ -31,6 +32,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -53,6 +55,7 @@ var (
 	dryrun      = flag.Bool("info", false, "print information / dry run")
 )
 
+//Series Series like structure
 type Series struct {
 	Type   string //check with reflect.TypeOf(event).Name()
 	Data   []interface{}
@@ -61,8 +64,10 @@ type Series struct {
 	Ind    int
 }
 
+//SeriesMap Map structure for Series
 type SeriesMap map[string]*Series
 
+//Dataframe Dataframe like structure
 type Dataframe struct {
 	smap SeriesMap //Series
 	keys []string
@@ -97,7 +102,7 @@ func (d *Dataframe) append(Ind int, Layer string, Key string,
 //even make csv columns even in length
 func (d *Dataframe) even(Ind int) {
 	Ind++
-	for key, _ := range d.smap {
+	for key := range d.smap {
 		if (d.smap[key].Length) < Ind {
 			for i := 0; i < Ind-d.smap[key].Length; i++ {
 				d.smap[key].Data = append(d.smap[key].Data, nil)
@@ -124,10 +129,17 @@ func (d *Dataframe) addKey(key string) {
 	d.keys = append(d.keys, key)
 }
 
-func (d *Dataframe) dumpCSV() {
+func (d *Dataframe) dumpCSV(output string) {
 	var line []string
 	var val string
-	file, err := os.Create("result.csv")
+	if !strings.HasSuffix(output, ".csv") {
+		if _, err := os.Stat(output); os.IsNotExist(err) {
+			panic("ERROR: output file not a .csv and dir name does not exist.")
+		} else {
+			output = path.Join(output, "result.csv")
+		}
+	}
+	file, err := os.Create(output)
 	if err != nil {
 		panic(err)
 	}
@@ -160,6 +172,7 @@ const (
 	ModeOffline = true //TODO: switch to runtime
 )
 
+//ConfigYAML Configuration structure file
 type ConfigYAML struct {
 	Config struct {
 		Snaplen     int    // `yaml:"snaplen"`
@@ -180,7 +193,7 @@ type ConfigYAML struct {
 var captureKeys []string //TODO: move to struct
 var captureFields map[string]int
 
-//TODO: tuple instead?
+//TODO: 2-tuple instead?
 var pldLo int //Payload - filter: [0, 10]
 var pldHi int //Payload - filter: [0, 10]
 
@@ -226,7 +239,7 @@ func main() {
 	fmt.Printf("Capture Structure:\n")
 	for _, key := range c.Capture {
 		keyName := fmt.Sprintf("%s", reflect.ValueOf(key).MapKeys()[0])
-		//fmt.Printf("\t%s\n", keyName)
+
 		m := reflect.ValueOf(key[keyName]) //get map
 		for i := 0; i < m.Len(); i++ {
 			field := reflect.ValueOf(m.Index(i).Interface()).MapKeys()[0]
@@ -278,7 +291,6 @@ func main() {
 	}
 	defer handle.Close()
 
-	//os.Exit(0)
 	var source = gopacket.NewPacketSource(handle, handle.LinkType())
 	var pktIndex = 0
 	for packet := range source.Packets() {
@@ -324,7 +336,6 @@ func main() {
 					}
 				}
 			} else {
-				fmt.Printf("HERE1 \n")
 				if app := packet.ApplicationLayer(); app != nil {
 					payload := app.Payload()
 					pldStr := ""
@@ -333,7 +344,6 @@ func main() {
 							pldStr += fmt.Sprintf("%02x:", b)
 						}
 					}
-					fmt.Printf("HERE %s\n", pldStr)
 					out.append(pktIndex, "Payload",
 						"Length",
 						"int", len(payload))
@@ -341,7 +351,7 @@ func main() {
 						"filter",
 						"string", pldStr)
 				}
-				fmt.Printf("\n")
+				//fmt.Printf("\n")
 			}
 		}
 		out.append(pktIndex, "gopacket",
@@ -363,5 +373,5 @@ func main() {
 
 	//out.dumpLine(pktIndex-1, "csv")
 	fmt.Printf("Total Packets: %d\n", pktIndex-1)
-	out.dumpCSV()
+	out.dumpCSV(c.Config.Output)
 }

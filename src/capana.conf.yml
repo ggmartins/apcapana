@@ -7,7 +7,7 @@ config:
   promiscuous: false # libpcap promiscuous mode
   printstats: true   # print general stats at the end
   progress: false    # show progress bar
-  output: ./output/  # output directory 
+  output: ./output/o.csv  # output directory / file
 
 plugins:
   - ouimap: modules/macoui_map.so # mac address to manufacturer mapping 
@@ -19,7 +19,7 @@ policy:
     - redirect: others.csv
       include: [ALLUNMATCHED] #[NTP, IGMPv4]
     - plugin: geoip
-      include: [TCP, UDP]
+      include: [TCP, UDP, DNS]
     - plugin: dnsmap
       include: [DNS]
     - plugin: ouimap
@@ -31,7 +31,6 @@ policy:
     - format:
       - file: [csv] # [csv, json, sql, psql]
       - granularity: [packet] # [packet, flow, time1sec, time5sec]
-
 
 capture:
   - Metadata:
