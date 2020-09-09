@@ -33,6 +33,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -129,14 +130,14 @@ func (d *Dataframe) addKey(key string) {
 	d.keys = append(d.keys, key)
 }
 
-func (d *Dataframe) dumpCSV(output string) {
+func (d *Dataframe) dumpCSV(pcapfile string, output string) {
 	var line []string
 	var val string
 	if !strings.HasSuffix(output, ".csv") {
 		if _, err := os.Stat(output); os.IsNotExist(err) {
 			panic("ERROR: output file not a .csv and dir name does not exist.")
 		} else {
-			output = path.Join(output, "result.csv")
+			output = path.Join(output, filepath.Base(pcapfile + ".csv"))
 		}
 	}
 	file, err := os.Create(output)
@@ -241,6 +242,7 @@ func main() {
 		keyName := fmt.Sprintf("%s", reflect.ValueOf(key).MapKeys()[0])
 
 		m := reflect.ValueOf(key[keyName]) //get map
+		if !m.IsValid() { continue }
 		for i := 0; i < m.Len(); i++ {
 			field := reflect.ValueOf(m.Index(i).Interface()).MapKeys()[0]
 			kf := fmt.Sprintf("%s.%s", keyName, field)
@@ -373,5 +375,5 @@ func main() {
 
 	//out.dumpLine(pktIndex-1, "csv")
 	fmt.Printf("Total Packets: %d\n", pktIndex-1)
-	out.dumpCSV(c.Config.Output)
+	out.dumpCSV(pcapfile, c.Config.Output)
 }
