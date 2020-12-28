@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////
-// (ap)capana - Advanced Packet Capture Analysis
+// pcapx pcap.expert - Expert Packet Capture Analysis
 // Description: This is Go Lang tool designed to aid network traffic
 // analysis using standard packet capture .pcap file format as input.
 // It provides building block plugin modules to facilitate various data
@@ -14,10 +14,10 @@
 // output - directory ./output/*.csv files (configurable via )
 //
 // config - config dir repository
-// capana.conf.yml - yaml with all the configuration required for execution
+// pcapx.conf.yml - yaml with all the configuration required for execution
 // config examples:
-//   capana.default.conf.yml - default lightweight configuration
-//   capana.alldata.conf.yml - simplified configuration to export all the data
+//   pcapx.default.conf.yml - default lightweight configuration
+//   pcapx.alldata.conf.yml - simplified configuration to export all the data
 //
 // Authors:
 //   Guilherme G. Martins - gmartins uchicago @ edu
@@ -52,7 +52,7 @@ var (
 	err         error
 	timeout     time.Duration = 30 * time.Second
 	handle      *pcap.Handle
-	config      = flag.String("c", "capana.conf.yml", "config file")
+	config      = flag.String("c", "pcapx.conf.yml", "config file")
 	dryrun      = flag.Bool("info", false, "print information / dry run")
 )
 
@@ -221,7 +221,7 @@ func main() {
 	log.Printf("INFO Using configuration: %s\n", *config)
 
 	if len(flag.Args()) == 0 {
-		log.Println("ERROR Please, provide filenames or network interfaces: \"./capana <example.pcap|en0>\"")
+		log.Println("ERROR Please, provide filenames or network interfaces: \"./pcapx <example.pcap|en0>\"")
 		os.Exit(1)
 	}
 	for i, fd := range flag.Args() {
